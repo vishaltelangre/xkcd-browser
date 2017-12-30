@@ -79,28 +79,30 @@ type alias Comic =
 
 type alias Model =
     { seed : Int
+    , spinnerPath : String
     , route : Route
     , latest : WebData Comic
     , requested : WebData Comic
     }
 
 
-initialModel : Int -> Route -> Model
-initialModel seed route =
+initialModel : Int -> String -> Route -> Model
+initialModel seed spinnerPath route =
     { seed = seed
+    , spinnerPath = spinnerPath
     , route = route
     , latest = RemoteData.Loading
     , requested = RemoteData.Loading
     }
 
 
-init : Int -> Location -> ( Model, Cmd Msg )
-init seed location =
+init : ProgramFlags -> Location -> ( Model, Cmd Msg )
+init { seed, spinnerPath } location =
     let
         currentRoute =
             parseLocation location
     in
-        (initialModel seed currentRoute) ! [ commandOnRouteChange currentRoute ]
+        (initialModel seed spinnerPath currentRoute) ! [ commandOnRouteChange currentRoute ]
 
 
 comicApiUrl : ComicQuery -> String
@@ -215,6 +217,11 @@ update msg model =
 ---- VIEW ----
 
 
+viewLoadingSpinner : String -> Html Msg
+viewLoadingSpinner spinnerPath =
+    img [ src spinnerPath ] []
+
+
 viewHeading : Comic -> Html Msg
 viewHeading { number, safeTitle } =
     div [ class "heading" ]
@@ -291,13 +298,13 @@ viewMeta { number, month, day, year, transcript, news } =
 
 
 viewComic : Model -> Html Msg
-viewComic { latest, requested } =
+viewComic { latest, requested, spinnerPath } =
     case requested of
         RemoteData.NotAsked ->
             text ""
 
         RemoteData.Loading ->
-            h2 [] [ text "Loading" ]
+            h2 [] [ viewLoadingSpinner spinnerPath ]
 
         RemoteData.Success requestedComic ->
             case latest of
@@ -313,7 +320,7 @@ viewComic { latest, requested } =
                     text (toString error)
 
                 _ ->
-                    h2 [] [ text "Loading" ]
+                    h2 [] [ viewLoadingSpinner spinnerPath ]
 
         RemoteData.Failure error ->
             text (toString error)
@@ -336,7 +343,11 @@ view model =
 ---- PROGRAM ----
 
 
-main : Program Int Model Msg
+type alias ProgramFlags =
+    { seed : Int, spinnerPath : String }
+
+
+main : Program ProgramFlags Model Msg
 main =
     Navigation.programWithFlags OnLocationChange
         { view = view
