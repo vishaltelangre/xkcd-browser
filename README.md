@@ -2,6 +2,15 @@
 
 Built with ❤️ using Elm.
 
+
+### Preview GIF
+
+![xkcd-browser](https://user-images.githubusercontent.com/876195/34456050-5bbb577a-edb3-11e7-91c2-22aedecb7cac.gif)
+
+
+It is hosted at https://vishaltelangre.com/xkcd.
+
+
 ### To run locally
 
 ```
