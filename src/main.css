@@ -6,6 +6,10 @@ body {
   color: #293c4b;
 }
 
+a {
+  color: blue;
+}
+
 .heading {
   margin: 10px 20px;
 }
@@ -19,8 +23,8 @@ h2 {
   margin: 10px 10px 20px;
 }
 
-.navigation button {
-  margin-right: 10px;
+.navigation a {
+  margin-right: 20px;
 }
 
 .number {

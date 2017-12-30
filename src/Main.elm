@@ -39,12 +39,26 @@ parseLocation location =
             NotFoundRoute
 
 
+commandOnRouteChange : Route -> Cmd Msg
+commandOnRouteChange route =
+    case route of
+        ComicRoute comicNumber ->
+            Cmd.batch [ fetchComic Latest, fetchComic (WithNumber comicNumber) ]
+
+        LatestComicRoute ->
+            fetchComic LatestAndRequested
+
+        _ ->
+            Cmd.none
+
+
 
 ---- MODEL ----
 
 
 type ComicQuery
     = Latest
+    | LatestAndRequested
     | WithNumber Int
 
 
@@ -65,33 +79,38 @@ type alias Comic =
 
 type alias Model =
     { seed : Int
+    , route : Route
     , latest : WebData Comic
     , requested : WebData Comic
     }
 
 
-initCommic : Comic
-initCommic =
-    Comic 0 "" "" "" "" "" "" "" "" "" ""
-
-
-init : Int -> ( Model, Cmd Msg )
-init seed =
+initialModel : Int -> Route -> Model
+initialModel seed route =
     { seed = seed
+    , route = route
     , latest = RemoteData.Loading
     , requested = RemoteData.Loading
     }
-        ! [ fetchComic Latest ]
+
+
+init : Int -> Location -> ( Model, Cmd Msg )
+init seed location =
+    let
+        currentRoute =
+            parseLocation location
+    in
+        (initialModel seed currentRoute) ! [ commandOnRouteChange currentRoute ]
 
 
 comicApiUrl : ComicQuery -> String
 comicApiUrl comicQuery =
     case comicQuery of
-        Latest ->
-            "https://xkcd.com/info.0.json"
-
         WithNumber number ->
             "https://xkcd.com/" ++ (toString number) ++ "/info.0.json"
+
+        _ ->
+            "https://xkcd.com/info.0.json"
 
 
 comicUrl : Int -> String
@@ -104,6 +123,16 @@ comicExplainUrl comicNumber =
     "http://www.explainxkcd.com/wiki/index.php/" ++ (toString comicNumber)
 
 
+comicPath : ComicQuery -> String
+comicPath comicQuery =
+    case comicQuery of
+        WithNumber number ->
+            "#/comics/" ++ (toString number)
+
+        _ ->
+            "#"
+
+
 
 ---- UPDATE ----
 
@@ -112,6 +141,7 @@ type Msg
     = OnComicLoad ComicQuery (WebData Comic)
     | LoadRequestedComic Int
     | GenerateRandomComicNumber
+    | OnLocationChange Location
 
 
 fetchComic : ComicQuery -> Cmd Msg
@@ -158,13 +188,27 @@ update msg model =
         OnComicLoad comicQuery response ->
             case comicQuery of
                 Latest ->
+                    { model | latest = response } ! []
+
+                LatestAndRequested ->
                     { model | latest = response, requested = response } ! []
 
                 WithNumber _ ->
                     { model | requested = response } ! []
 
         LoadRequestedComic number ->
-            model ! [ WithNumber number |> fetchComic ]
+            model ! [ comicPath (WithNumber number) |> Navigation.newUrl ]
+
+        OnLocationChange location ->
+            let
+                newRoute =
+                    parseLocation location
+            in
+                { model
+                    | route = newRoute
+                    , requested = RemoteData.Loading
+                }
+                    ! [ commandOnRouteChange newRoute ]
 
 
 
@@ -184,24 +228,26 @@ viewHeading { number, safeTitle } =
 viewNavigation : Int -> Int -> Html Msg
 viewNavigation currentComicNumber totalComicCount =
     let
-        previousButton =
+        previousLink =
             if currentComicNumber == 1 then
                 text ""
             else
-                button [ onClick (LoadRequestedComic (currentComicNumber - 1)) ]
+                a [ href (comicPath (WithNumber (currentComicNumber - 1))) ]
                     [ text "Previous" ]
 
-        nextButton =
+        nextLink =
             if currentComicNumber == totalComicCount then
                 text ""
             else
-                button [ onClick (LoadRequestedComic (currentComicNumber + 1)) ]
+                a [ href (comicPath (WithNumber (currentComicNumber + 1))) ]
                     [ text "Next" ]
     in
         div [ class "navigation" ]
-            [ previousButton
-            , button [ onClick GenerateRandomComicNumber ] [ text "Random" ]
-            , nextButton
+            [ previousLink
+            , a [ href (comicPath LatestAndRequested) ] [ text "Latest" ]
+            , a [ href "javascript:void(0)", onClick GenerateRandomComicNumber ]
+                [ text "Random" ]
+            , nextLink
             ]
 
 
@@ -244,8 +290,8 @@ viewMeta { number, month, day, year, transcript, news } =
             ]
 
 
-view : Model -> Html Msg
-view { latest, requested } =
+viewComic : Model -> Html Msg
+viewComic { latest, requested } =
     case requested of
         RemoteData.NotAsked ->
             text ""
@@ -273,13 +319,26 @@ view { latest, requested } =
             text (toString error)
 
 
+view : Model -> Html Msg
+view model =
+    case model.route of
+        LatestComicRoute ->
+            viewComic model
+
+        ComicRoute comicNumber ->
+            viewComic model
+
+        NotFoundRoute ->
+            h2 [] [ text "Not Found" ]
+
+
 
 ---- PROGRAM ----
 
 
 main : Program Int Model Msg
 main =
-    Html.programWithFlags
+    Navigation.programWithFlags OnLocationChange
         { view = view
         , init = init
         , update = update
