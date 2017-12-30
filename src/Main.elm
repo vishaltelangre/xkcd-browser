@@ -7,6 +7,37 @@ import Http
 import Json.Decode exposing (..)
 import Json.Decode.Pipeline exposing (..)
 import Random
+import Navigation exposing (Location)
+import UrlParser exposing (Parser, (</>), s, parseHash)
+import RemoteData exposing (WebData)
+
+
+---- ROUTING ----
+
+
+type Route
+    = LatestComicRoute
+    | ComicRoute Int
+    | NotFoundRoute
+
+
+matchers : Parser (Route -> a) a
+matchers =
+    UrlParser.oneOf
+        [ UrlParser.map LatestComicRoute UrlParser.top
+        , UrlParser.map ComicRoute (s "comics" </> UrlParser.int)
+        ]
+
+
+parseLocation : Location -> Route
+parseLocation location =
+    case (parseHash matchers location) of
+        Just route ->
+            route
+
+        Nothing ->
+            NotFoundRoute
+
 
 
 ---- MODEL ----
@@ -33,7 +64,10 @@ type alias Comic =
 
 
 type alias Model =
-    { seed : Int, latest : Comic, requested : Comic }
+    { seed : Int
+    , latest : WebData Comic
+    , requested : WebData Comic
+    }
 
 
 initCommic : Comic
@@ -44,10 +78,10 @@ initCommic =
 init : Int -> ( Model, Cmd Msg )
 init seed =
     { seed = seed
-    , latest = initCommic
-    , requested = initCommic
+    , latest = RemoteData.Loading
+    , requested = RemoteData.Loading
     }
-        ! [ getComic Latest ]
+        ! [ fetchComic Latest ]
 
 
 comicApiUrl : ComicQuery -> String
@@ -75,18 +109,18 @@ comicExplainUrl comicNumber =
 
 
 type Msg
-    = ComicLoaded ComicQuery (Result Http.Error Comic)
+    = OnComicLoad ComicQuery (WebData Comic)
     | LoadRequestedComic Int
     | GenerateRandomComicNumber
 
 
-getComic : ComicQuery -> Cmd Msg
-getComic comicQuery =
+fetchComic : ComicQuery -> Cmd Msg
+fetchComic comicQuery =
     let
         url =
             "https://cors.io?" ++ (comicApiUrl comicQuery)
     in
-        Http.get url comicDecoder |> Http.send (ComicLoaded comicQuery)
+        Http.get url comicDecoder |> RemoteData.sendRequest |> Cmd.map (OnComicLoad comicQuery)
 
 
 comicDecoder : Decoder Comic
@@ -110,28 +144,27 @@ update msg model =
     case msg of
         GenerateRandomComicNumber ->
             let
-                generator =
-                    Random.int 1 model.latest.number
-            in
-                model ! [ Random.generate LoadRequestedComic generator ]
+                cmd =
+                    case model.latest of
+                        RemoteData.Success comic ->
+                            Random.int 1 comic.number
+                                |> Random.generate LoadRequestedComic
 
-        ComicLoaded comicQuery (Ok comic) ->
+                        _ ->
+                            Cmd.none
+            in
+                model ! [ cmd ]
+
+        OnComicLoad comicQuery response ->
             case comicQuery of
                 Latest ->
-                    { model | latest = comic, requested = comic } ! []
+                    { model | latest = response, requested = response } ! []
 
                 WithNumber _ ->
-                    { model | requested = comic } ! []
-
-        ComicLoaded _ (Err error) ->
-            let
-                _ =
-                    Debug.log "Decoding error: " error
-            in
-                model ! []
+                    { model | requested = response } ! []
 
         LoadRequestedComic number ->
-            model ! [ WithNumber number |> getComic ]
+            model ! [ WithNumber number |> fetchComic ]
 
 
 
@@ -213,12 +246,31 @@ viewMeta { number, month, day, year, transcript, news } =
 
 view : Model -> Html Msg
 view { latest, requested } =
-    div []
-        [ viewHeading requested
-        , viewNavigation requested.number latest.number
-        , viewImage requested
-        , viewMeta requested
-        ]
+    case requested of
+        RemoteData.NotAsked ->
+            text ""
+
+        RemoteData.Loading ->
+            h2 [] [ text "Loading" ]
+
+        RemoteData.Success requestedComic ->
+            case latest of
+                RemoteData.Success latestComic ->
+                    div []
+                        [ viewHeading requestedComic
+                        , viewNavigation requestedComic.number latestComic.number
+                        , viewImage requestedComic
+                        , viewMeta requestedComic
+                        ]
+
+                RemoteData.Failure error ->
+                    text (toString error)
+
+                _ ->
+                    h2 [] [ text "Loading" ]
+
+        RemoteData.Failure error ->
+            text (toString error)
 
 
 
