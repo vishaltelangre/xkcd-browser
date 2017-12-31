@@ -224,7 +224,15 @@ update msg model =
                 newModel =
                     { model | route = newRoute, requested = RemoteData.Loading }
             in
-                newModel ! [ routeChangeCmd newRoute newModel ]
+                case newRoute of
+                    LatestComicRoute ->
+                        if newModel.latest == RemoteData.Loading then
+                            newModel ! [ routeChangeCmd newRoute newModel ]
+                        else
+                            { newModel | requested = newModel.latest } ! []
+
+                    _ ->
+                        newModel ! [ routeChangeCmd newRoute newModel ]
 
 
 
