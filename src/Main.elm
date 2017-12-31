@@ -9,6 +9,7 @@ import Navigation exposing (Location)
 import Random
 import RemoteData exposing (WebData)
 import UrlParser exposing (Parser, (</>), s, parseHash)
+import Keyboard
 
 
 ---- ROUTING ----
@@ -138,6 +139,7 @@ type Msg
     = OnComicLoad ComicQuery (WebData Comic)
     | LoadRequestedComic Int
     | OnLocationChange Location
+    | Noop
 
 
 fetchComic : ComicQuery -> Cmd Msg
@@ -242,6 +244,9 @@ update msg model =
 
                     _ ->
                         newModel ! [ routeChangeCmd newRoute newModel ]
+
+        Noop ->
+            model ! []
 
 
 
@@ -376,6 +381,35 @@ view model =
         NotFoundRoute ->
             viewError "Not Found"
 
+---- SUBSCRIPTIONS ----
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    let
+        comicNumbers =
+            RemoteData.map2 (,)
+                (RemoteData.map .number model.latest)
+                (RemoteData.map .number model.requested)
+
+        handleKeyDown code =
+            case ( code, comicNumbers ) of
+                ( 37, RemoteData.Success ( _, requestedNumber ) ) ->
+                    if requestedNumber /= 1 then
+                        LoadRequestedComic <| requestedNumber - 1
+                    else
+                        Noop
+
+                ( 39, RemoteData.Success ( latestNumber, requestedNumber ) ) ->
+                    if requestedNumber /= latestNumber then
+                        LoadRequestedComic <| requestedNumber + 1
+                    else
+                        Noop
+
+                _ ->
+                    Noop
+    in
+        Keyboard.downs handleKeyDown
 
 
 ---- PROGRAM ----
@@ -391,5 +425,5 @@ main =
         { view = view
         , init = init
         , update = update
-        , subscriptions = always Sub.none
+        , subscriptions = subscriptions
         }
