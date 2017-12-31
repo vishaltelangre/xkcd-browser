@@ -6,10 +6,10 @@ import Html.Events exposing (onClick)
 import Http
 import Json.Decode exposing (..)
 import Json.Decode.Pipeline exposing (..)
-import Random
 import Navigation exposing (Location)
-import UrlParser exposing (Parser, (</>), s, parseHash)
+import Random
 import RemoteData exposing (WebData)
+import UrlParser exposing (Parser, (</>), s, parseHash)
 
 
 ---- ROUTING ----
@@ -37,19 +37,6 @@ parseLocation location =
 
         Nothing ->
             NotFoundRoute
-
-
-commandOnRouteChange : Route -> Cmd Msg
-commandOnRouteChange route =
-    case route of
-        ComicRoute comicNumber ->
-            Cmd.batch [ fetchComic Latest, fetchComic (WithNumber comicNumber) ]
-
-        LatestComicRoute ->
-            fetchComic LatestAndRequested
-
-        _ ->
-            Cmd.none
 
 
 
@@ -101,8 +88,11 @@ init { seed, spinnerPath } location =
     let
         currentRoute =
             parseLocation location
+
+        model =
+            (initialModel seed spinnerPath currentRoute)
     in
-        (initialModel seed spinnerPath currentRoute) ! [ commandOnRouteChange currentRoute ]
+        model ! [ routeChangeCmd currentRoute model ]
 
 
 comicApiUrl : ComicQuery -> String
@@ -171,6 +161,31 @@ comicDecoder =
         |> optional "transcript" string ""
 
 
+routeChangeCmd : Route -> Model -> Cmd Msg
+routeChangeCmd route { latest } =
+    let
+        latestComicFetchCmd =
+            case latest of
+                RemoteData.Loading ->
+                    fetchComic Latest
+
+                _ ->
+                    Cmd.none
+    in
+        case route of
+            ComicRoute comicNumber ->
+                Cmd.batch
+                    [ latestComicFetchCmd
+                    , fetchComic (WithNumber comicNumber)
+                    ]
+
+            LatestComicRoute ->
+                fetchComic LatestAndRequested
+
+            _ ->
+                Cmd.none
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
@@ -205,12 +220,11 @@ update msg model =
             let
                 newRoute =
                     parseLocation location
+
+                newModel =
+                    { model | route = newRoute, requested = RemoteData.Loading }
             in
-                { model
-                    | route = newRoute
-                    , requested = RemoteData.Loading
-                }
-                    ! [ commandOnRouteChange newRoute ]
+                newModel ! [ routeChangeCmd newRoute newModel ]
 
 
 
