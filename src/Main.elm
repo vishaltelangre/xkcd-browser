@@ -140,7 +140,7 @@ fetchComic : ComicQuery -> Cmd Msg
 fetchComic comicQuery =
     let
         url =
-            "https://cors.io?" ++ (comicApiUrl comicQuery)
+            "https://vishaltelangre.com/cors-proxy?url=" ++ (comicApiUrl comicQuery)
     in
         Http.get url comicDecoder |> RemoteData.sendRequest |> Cmd.map (OnComicLoad comicQuery)
 
