@@ -1,8 +1,7 @@
 module Main exposing (..)
 
-import Html exposing (Html, text, div, img, h2, span, button, ul, li, label, pre, a)
+import Html exposing (Html, text, div, img, h2, span, ul, li, label, pre, a)
 import Html.Attributes exposing (src, class, title, href, target)
-import Html.Events exposing (onClick)
 import Http
 import Json.Decode exposing (..)
 import Json.Decode.Pipeline exposing (..)
@@ -17,6 +16,7 @@ import UrlParser exposing (Parser, (</>), s, parseHash)
 
 type Route
     = LatestComicRoute
+    | RandomComicRoute
     | ComicRoute Int
     | NotFoundRoute
 
@@ -25,6 +25,7 @@ matchers : Parser (Route -> a) a
 matchers =
     UrlParser.oneOf
         [ UrlParser.map LatestComicRoute UrlParser.top
+        , UrlParser.map RandomComicRoute (s "comics" </> s "random")
         , UrlParser.map ComicRoute (s "comics" </> UrlParser.int)
         ]
 
@@ -46,6 +47,7 @@ parseLocation location =
 type ComicQuery
     = Latest
     | LatestAndRequested
+    | Random
     | WithNumber Int
 
 
@@ -121,6 +123,9 @@ comicPath comicQuery =
         WithNumber number ->
             "#/comics/" ++ (toString number)
 
+        Random ->
+            "#/comics/random"
+
         _ ->
             "#"
 
@@ -132,7 +137,6 @@ comicPath comicQuery =
 type Msg
     = OnComicLoad ComicQuery (WebData Comic)
     | LoadRequestedComic Int
-    | GenerateRandomComicNumber
     | OnLocationChange Location
 
 
@@ -182,6 +186,21 @@ routeChangeCmd route { latest } =
             LatestComicRoute ->
                 fetchComic LatestAndRequested
 
+            RandomComicRoute ->
+                case latest of
+                    RemoteData.Success comic ->
+                        Random.int 1 comic.number
+                            |> Random.generate LoadRequestedComic
+
+                    RemoteData.Failure _ ->
+                        Navigation.modifyUrl (comicPath LatestAndRequested)
+
+                    RemoteData.NotAsked ->
+                        Cmd.none
+
+                    _ ->
+                        fetchComic Random
+
             _ ->
                 Cmd.none
 
@@ -189,19 +208,6 @@ routeChangeCmd route { latest } =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        GenerateRandomComicNumber ->
-            let
-                cmd =
-                    case model.latest of
-                        RemoteData.Success comic ->
-                            Random.int 1 comic.number
-                                |> Random.generate LoadRequestedComic
-
-                        _ ->
-                            Cmd.none
-            in
-                model ! [ cmd ]
-
         OnComicLoad comicQuery response ->
             case comicQuery of
                 Latest ->
@@ -210,11 +216,14 @@ update msg model =
                 LatestAndRequested ->
                     { model | latest = response, requested = response } ! []
 
+                Random ->
+                    { model | latest = response } ! [ routeChangeCmd model.route model ]
+
                 WithNumber _ ->
                     { model | requested = response } ! []
 
         LoadRequestedComic number ->
-            model ! [ comicPath (WithNumber number) |> Navigation.newUrl ]
+            model ! [ comicPath (WithNumber number) |> Navigation.modifyUrl ]
 
         OnLocationChange location ->
             let
@@ -274,8 +283,7 @@ viewNavigation currentComicNumber totalComicCount =
         div [ class "navigation" ]
             [ previousLink
             , a [ href (comicPath LatestAndRequested) ] [ text "Latest" ]
-            , a [ href "javascript:void(0)", onClick GenerateRandomComicNumber ]
-                [ text "Random" ]
+            , a [ href (comicPath Random) ] [ text "Random" ]
             , nextLink
             ]
 
@@ -361,6 +369,9 @@ view model =
 
         ComicRoute comicNumber ->
             viewComic model
+
+        RandomComicRoute ->
+            viewLoadingSpinner model.spinnerPath
 
         NotFoundRoute ->
             viewError "Not Found"
