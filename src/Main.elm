@@ -250,7 +250,7 @@ viewNavigation : Int -> Int -> Html Msg
 viewNavigation currentComicNumber totalComicCount =
     let
         previousLink =
-            if currentComicNumber == 1 then
+            if currentComicNumber <= 1 then
                 text ""
             else
                 a [ href (comicPath (WithNumber (currentComicNumber - 1))) ]
@@ -315,7 +315,7 @@ viewComic : Model -> Html Msg
 viewComic { latest, requested, spinnerPath } =
     case requested of
         RemoteData.NotAsked ->
-            text ""
+            viewError ""
 
         RemoteData.Loading ->
             h2 [] [ viewLoadingSpinner spinnerPath ]
@@ -331,13 +331,18 @@ viewComic { latest, requested, spinnerPath } =
                         ]
 
                 RemoteData.Failure error ->
-                    text (toString error)
+                    viewError (toString error)
 
                 _ ->
                     h2 [] [ viewLoadingSpinner spinnerPath ]
 
         RemoteData.Failure error ->
-            text (toString error)
+            viewError (toString error)
+
+
+viewError : String -> Html Msg
+viewError errorMessage =
+    div [] [ h2 [] [ text errorMessage ], viewNavigation 0 0 ]
 
 
 view : Model -> Html Msg
@@ -350,7 +355,7 @@ view model =
             viewComic model
 
         NotFoundRoute ->
-            h2 [] [ text "Not Found" ]
+            viewError "Not Found"
 
 
 
