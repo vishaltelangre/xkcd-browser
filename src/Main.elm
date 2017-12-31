@@ -193,22 +193,20 @@ routeChangeCmd route { latest } =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        OnComicLoad comicQuery response ->
-            case comicQuery of
-                Latest ->
-                    { model | latest = response } ! []
+        OnComicLoad Latest response ->
+            { model | latest = response } ! []
 
-                LatestAndRequested ->
-                    { model | latest = response, requested = response } ! []
+        OnComicLoad LatestAndRequested response ->
+            { model | latest = response, requested = response } ! []
 
-                Random ->
-                    { model | latest = response } ! [ routeChangeCmd model.route model ]
+        OnComicLoad Random response ->
+            { model | latest = response } ! [ routeChangeCmd model.route model ]
 
-                WithNumber _ ->
-                    { model | requested = response } ! []
+        OnComicLoad (WithNumber _) response ->
+            { model | requested = response } ! []
 
-        LoadRequestedComic number ->
-            model ! [ comicPath (WithNumber number) |> Navigation.modifyUrl ]
+        LoadRequestedComic comicNumber ->
+            model ! [ comicPath (WithNumber comicNumber) |> Navigation.modifyUrl ]
 
         OnLocationChange location ->
             let
