@@ -167,42 +167,27 @@ comicDecoder =
 
 routeChangeCmd : Route -> Model -> Cmd Msg
 routeChangeCmd route { latest } =
-    let
-        latestComicFetchCmd =
-            case latest of
-                RemoteData.Loading ->
-                    fetchComic Latest
+    case ( route, latest ) of
+        ( ComicRoute comicNumber, RemoteData.Loading ) ->
+            Cmd.batch [ fetchComic Latest, fetchComic (WithNumber comicNumber) ]
 
-                _ ->
-                    Cmd.none
-    in
-        case route of
-            ComicRoute comicNumber ->
-                Cmd.batch
-                    [ latestComicFetchCmd
-                    , fetchComic (WithNumber comicNumber)
-                    ]
+        ( ComicRoute comicNumber, _ ) ->
+            fetchComic (WithNumber comicNumber)
 
-            LatestComicRoute ->
-                fetchComic LatestAndRequested
+        ( LatestComicRoute, _ ) ->
+            fetchComic LatestAndRequested
 
-            RandomComicRoute ->
-                case latest of
-                    RemoteData.Success comic ->
-                        Random.int 1 comic.number
-                            |> Random.generate LoadRequestedComic
+        ( RandomComicRoute, RemoteData.Success comic ) ->
+            Random.int 1 comic.number |> Random.generate LoadRequestedComic
 
-                    RemoteData.Failure _ ->
-                        Navigation.modifyUrl (comicPath LatestAndRequested)
+        ( RandomComicRoute, RemoteData.Failure _ ) ->
+            Navigation.modifyUrl (comicPath LatestAndRequested)
 
-                    RemoteData.NotAsked ->
-                        Cmd.none
+        ( RandomComicRoute, RemoteData.Loading ) ->
+            fetchComic Random
 
-                    _ ->
-                        fetchComic Random
-
-            _ ->
-                Cmd.none
+        ( _, _ ) ->
+            Cmd.none
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
