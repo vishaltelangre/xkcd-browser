@@ -66,6 +66,16 @@ type alias Comic =
     , transcript : String
     }
 
+type alias ComicPair =
+    { latest : Comic
+    , requested : Comic
+    }
+
+getComicPair : Model -> WebData ComicPair
+getComicPair model =
+    RemoteData.map2 ComicPair model.latest model.requested
+
+
 
 type alias Model =
     { seed : Int
@@ -89,8 +99,7 @@ initialModel seed spinnerPath route =
 init : ProgramFlags -> Location -> ( Model, Cmd Msg )
 init { seed, spinnerPath } location =
     let
-        currentRoute =
-            parseLocation location
+        currentRoute = parseLocation location
 
         model =
             (initialModel seed spinnerPath currentRoute)
@@ -333,34 +342,25 @@ viewMeta { number, month, day, year, transcript, news } =
 
 
 viewComic : Model -> Html Msg
-viewComic { latest, requested, spinnerPath } =
-    case requested of
+viewComic model =
+    case getComicPair model of
         RemoteData.NotAsked ->
             viewError ""
 
         RemoteData.Loading ->
-            h2 [] [ viewLoadingSpinner spinnerPath ]
+            h2 [] [ viewLoadingSpinner model.spinnerPath ]
 
-        RemoteData.Success requestedComic ->
-            case latest of
-                RemoteData.Success latestComic ->
-                    div []
-                        [ viewHeading requestedComic
-                        , viewNavigation requestedComic.number latestComic.number
-                        , viewImage requestedComic
-                        , viewMeta requestedComic
-                        ]
-
-                RemoteData.Failure error ->
-                    viewError (toString error)
-
-                _ ->
-                    h2 [] [ viewLoadingSpinner spinnerPath ]
+        RemoteData.Success { latest, requested } ->
+            div []
+                [ viewHeading requested
+                , viewNavigation requested.number latest.number
+                , viewImage requested
+                , viewMeta requested
+                ]
 
         RemoteData.Failure error ->
             viewError (toString error)
-
-
+    
 viewError : String -> Html Msg
 viewError errorMessage =
     div [] [ h2 [] [ text errorMessage ], viewNavigation 0 0 ]
@@ -387,22 +387,17 @@ view model =
 subscriptions : Model -> Sub Msg
 subscriptions model =
     let
-        comicNumbers =
-            RemoteData.map2 (,)
-                (RemoteData.map .number model.latest)
-                (RemoteData.map .number model.requested)
-
         handleKeyDown code =
-            case ( code, comicNumbers ) of
-                ( 37, RemoteData.Success ( _, requestedNumber ) ) ->
-                    if requestedNumber /= 1 then
-                        LoadRequestedComic <| requestedNumber - 1
+            case ( code, getComicPair model ) of
+                ( 37, RemoteData.Success ({ requested }) ) ->
+                    if requested.number /= 1 then
+                        LoadRequestedComic <| requested.number - 1
                     else
                         Noop
 
-                ( 39, RemoteData.Success ( latestNumber, requestedNumber ) ) ->
-                    if requestedNumber /= latestNumber then
-                        LoadRequestedComic <| requestedNumber + 1
+                ( 39, RemoteData.Success { requested, latest }) ->
+                    if requested.number /= latest.number then
+                        LoadRequestedComic <| requested.number + 1
                     else
                         Noop
 
