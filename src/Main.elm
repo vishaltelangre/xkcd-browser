@@ -1,14 +1,15 @@
 module Main exposing (..)
 
-import Html exposing (Html, text, div, img, h2, span, ul, li, label, pre, a)
+import Html exposing (Html, text, div, img, h2, span, ul, li, label, pre, a, br, code)
 import Html.Attributes exposing (src, class, title, href, target)
 import Http
 import Json.Decode exposing (..)
 import Json.Decode.Pipeline exposing (..)
-import Navigation exposing (Location)
+import Navigation exposing (Location) 
 import Random
 import RemoteData exposing (WebData)
 import UrlParser exposing (Parser, (</>), s, parseHash)
+import Keyboard
 
 
 ---- ROUTING ----
@@ -65,6 +66,16 @@ type alias Comic =
     , transcript : String
     }
 
+type alias ComicPair =
+    { latest : Comic
+    , requested : Comic
+    }
+
+getComicPair : Model -> WebData ComicPair
+getComicPair model =
+    RemoteData.map2 ComicPair model.latest model.requested
+
+
 
 type alias Model =
     { seed : Int
@@ -82,14 +93,12 @@ initialModel seed spinnerPath route =
     , route = route
     , latest = RemoteData.Loading
     , requested = RemoteData.Loading
-    }
-
+    } 
 
 init : ProgramFlags -> Location -> ( Model, Cmd Msg )
 init { seed, spinnerPath } location =
     let
-        currentRoute =
-            parseLocation location
+        currentRoute = parseLocation location
 
         model =
             (initialModel seed spinnerPath currentRoute)
@@ -136,8 +145,9 @@ comicPath comicQuery =
 
 type Msg
     = OnComicLoad ComicQuery (WebData Comic)
-    | LoadRequestedComic Int
+    | LoadRequestedComic ComicQuery
     | OnLocationChange Location
+    | Noop
 
 
 fetchComic : ComicQuery -> Cmd Msg
@@ -178,7 +188,7 @@ routeChangeCmd route { latest } =
             fetchComic LatestAndRequested
 
         ( RandomComicRoute, RemoteData.Success comic ) ->
-            Random.int 1 comic.number |> Random.generate LoadRequestedComic
+            Random.int 1 comic.number |> Random.generate (LoadRequestedComic << WithNumber)
 
         ( RandomComicRoute, RemoteData.Failure _ ) ->
             Navigation.modifyUrl (comicPath LatestAndRequested)
@@ -205,8 +215,8 @@ update msg model =
         OnComicLoad (WithNumber _) response ->
             { model | requested = response } ! []
 
-        LoadRequestedComic comicNumber ->
-            model ! [ comicPath (WithNumber comicNumber) |> Navigation.modifyUrl ]
+        LoadRequestedComic comic ->
+            model ! [ comicPath comic |> Navigation.modifyUrl ]
 
         OnLocationChange location ->
             let
@@ -225,6 +235,9 @@ update msg model =
 
                     _ ->
                         newModel ! [ routeChangeCmd newRoute newModel ]
+
+        Noop ->
+            model ! []
 
 
 
@@ -245,31 +258,49 @@ viewHeading { number, safeTitle } =
             ]
         ]
 
+isFirstComic : ComicPair -> Bool
+isFirstComic { requested } =
+    requested.number == 0
 
-viewNavigation : Int -> Int -> Html Msg
-viewNavigation currentComicNumber totalComicCount =
+isLatestComic : ComicPair -> Bool
+isLatestComic { requested, latest } =
+    requested.number == latest.number
+
+viewNavigation : Maybe ComicPair -> Html Msg
+viewNavigation maybeComicPair =
     let
+        navLink name shortcut path =
+            a [ href <| comicPath path, class "navlink" ]
+              [ span [] [ text name ]
+              , br [] []
+              , code [] [ text shortcut ]
+              ]
+
         previousLink =
-            if currentComicNumber <= 1 then
-                text ""
-            else
-                a [ href (comicPath (WithNumber (currentComicNumber - 1))) ]
-                    [ text "Previous" ]
+            Maybe.withDefault [] <| 
+                flip Maybe.map maybeComicPair <|
+                    \comicPair ->
+                        if isFirstComic comicPair then
+                            []
+                        else
+                            [ navLink "Previous" "←" <| WithNumber <| comicPair.requested.number - 1 ]
 
         nextLink =
-            if currentComicNumber == totalComicCount then
-                text ""
-            else
-                a [ href (comicPath (WithNumber (currentComicNumber + 1))) ]
-                    [ text "Next" ]
+            Maybe.withDefault [] <|
+                flip Maybe.map maybeComicPair <|
+                    \comicPair ->
+                        if isLatestComic comicPair then
+                            []
+                        else
+                            [ navLink "Next" "→" <| WithNumber <| comicPair.requested.number + 1 ]
     in
-        div [ class "navigation" ]
-            [ previousLink
-            , a [ href (comicPath LatestAndRequested) ] [ text "Latest" ]
-            , a [ href (comicPath Random) ] [ text "Random" ]
-            , nextLink
-            ]
-
+        div [ class "navigation" ] <|
+            List.foldr (++) []
+                [ previousLink
+                , [ navLink "Latest" "H" LatestAndRequested ]
+                , [ navLink "Random" "R" Random ]
+                , nextLink
+                ]
 
 viewImage : Comic -> Html Msg
 viewImage { imageLink, alternateText } =
@@ -311,37 +342,28 @@ viewMeta { number, month, day, year, transcript, news } =
 
 
 viewComic : Model -> Html Msg
-viewComic { latest, requested, spinnerPath } =
-    case requested of
+viewComic model =
+    case getComicPair model of
         RemoteData.NotAsked ->
             viewError ""
 
         RemoteData.Loading ->
-            h2 [] [ viewLoadingSpinner spinnerPath ]
+            h2 [] [ viewLoadingSpinner model.spinnerPath ]
 
-        RemoteData.Success requestedComic ->
-            case latest of
-                RemoteData.Success latestComic ->
-                    div []
-                        [ viewHeading requestedComic
-                        , viewNavigation requestedComic.number latestComic.number
-                        , viewImage requestedComic
-                        , viewMeta requestedComic
-                        ]
-
-                RemoteData.Failure error ->
-                    viewError (toString error)
-
-                _ ->
-                    h2 [] [ viewLoadingSpinner spinnerPath ]
+        RemoteData.Success comicPair ->
+            div []
+                [ viewHeading comicPair.requested
+                , viewNavigation <| Just comicPair
+                , viewImage comicPair.requested
+                , viewMeta comicPair.requested
+                ]
 
         RemoteData.Failure error ->
             viewError (toString error)
-
-
+    
 viewError : String -> Html Msg
 viewError errorMessage =
-    div [] [ h2 [] [ text errorMessage ], viewNavigation 0 0 ]
+    div [] [ h2 [] [ text errorMessage ], viewNavigation Nothing ]
 
 
 view : Model -> Html Msg
@@ -359,6 +381,41 @@ view model =
         NotFoundRoute ->
             viewError "Not Found"
 
+---- SUBSCRIPTIONS ----
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    let
+        handleKeyDown code =
+            case ( code, getComicPair model ) of
+                -- Left arrow
+                ( 37, RemoteData.Success comicPair ) ->
+                    if isFirstComic comicPair then
+                        Noop
+                    else
+                        LoadRequestedComic <| WithNumber <| comicPair.requested.number - 1
+
+                -- Right arrow
+                ( 39, RemoteData.Success comicPair ) ->
+                    if isLatestComic comicPair then
+                        Noop
+                    else
+                        LoadRequestedComic <| WithNumber <| comicPair.requested.number + 1
+
+                -- H key
+                ( 72, _ ) ->
+                    LoadRequestedComic <| LatestAndRequested
+
+
+                -- R key
+                ( 82, _ ) ->
+                    LoadRequestedComic <| Random
+
+                _ ->
+                    Noop
+    in
+        Keyboard.downs handleKeyDown
 
 
 ---- PROGRAM ----
@@ -374,5 +431,5 @@ main =
         { view = view
         , init = init
         , update = update
-        , subscriptions = always Sub.none
+        , subscriptions = subscriptions
         }
