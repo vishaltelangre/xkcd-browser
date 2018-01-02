@@ -74,3 +74,23 @@ pre {
     display: none;
   }
 }
+
+.navlink {
+    text-decoration: none;
+    text-align: center;
+    display: inline-block;
+    vertical-align: middle
+}
+
+.navlink > span {
+    text-decoration: underline
+}
+
+.navlink > code {
+    font-family: monospace;
+    border: 1px solid #000;
+    border-radius: 5px;
+    padding: 0 5px 2px;
+    color: #fff;
+    background: #000
+}
