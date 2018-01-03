@@ -5,11 +5,11 @@ import Html.Attributes exposing (src, class, title, href, target)
 import Http
 import Json.Decode exposing (..)
 import Json.Decode.Pipeline exposing (..)
-import Navigation exposing (Location) 
+import Keyboard
+import Navigation exposing (Location)
 import Random
 import RemoteData exposing (WebData)
 import UrlParser exposing (Parser, (</>), s, parseHash)
-import Keyboard
 
 
 ---- ROUTING ----
@@ -66,15 +66,16 @@ type alias Comic =
     , transcript : String
     }
 
+
 type alias ComicPair =
     { latest : Comic
     , requested : Comic
     }
 
+
 getComicPair : Model -> WebData ComicPair
 getComicPair model =
     RemoteData.map2 ComicPair model.latest model.requested
-
 
 
 type alias Model =
@@ -93,12 +94,14 @@ initialModel seed spinnerPath route =
     , route = route
     , latest = RemoteData.Loading
     , requested = RemoteData.Loading
-    } 
+    }
+
 
 init : ProgramFlags -> Location -> ( Model, Cmd Msg )
 init { seed, spinnerPath } location =
     let
-        currentRoute = parseLocation location
+        currentRoute =
+            parseLocation location
 
         model =
             (initialModel seed spinnerPath currentRoute)
@@ -258,49 +261,45 @@ viewHeading { number, safeTitle } =
             ]
         ]
 
+
 isFirstComic : ComicPair -> Bool
 isFirstComic { requested } =
-    requested.number == 0
+    requested.number == 1
+
 
 isLatestComic : ComicPair -> Bool
 isLatestComic { requested, latest } =
     requested.number == latest.number
 
+
 viewNavigation : Maybe ComicPair -> Html Msg
 viewNavigation maybeComicPair =
     let
-        navLink name shortcut path =
-            a [ href <| comicPath path, class "navlink" ]
-              [ span [] [ text name ]
-              , br [] []
-              , code [] [ text shortcut ]
-              ]
-
-        previousLink =
-            Maybe.withDefault [] <| 
-                flip Maybe.map maybeComicPair <|
-                    \comicPair ->
-                        if isFirstComic comicPair then
-                            []
-                        else
-                            [ navLink "Previous" "←" <| WithNumber <| comicPair.requested.number - 1 ]
-
-        nextLink =
-            Maybe.withDefault [] <|
-                flip Maybe.map maybeComicPair <|
-                    \comicPair ->
-                        if isLatestComic comicPair then
-                            []
-                        else
-                            [ navLink "Next" "→" <| WithNumber <| comicPair.requested.number + 1 ]
-    in
-        div [ class "navigation" ] <|
-            List.foldr (++) []
-                [ previousLink
-                , [ navLink "Latest" "H" LatestAndRequested ]
-                , [ navLink "Random" "R" Random ]
-                , nextLink
+        navLink name shortcutIcon comicQuery =
+            a [ comicPath comicQuery |> href, class "navlink" ]
+                [ span [] [ text name ]
+                , br [] []
+                , code [] [ text shortcutIcon ]
                 ]
+
+        arrowLink shouldHideFunc name shortcutIcon incrementByNumber =
+            Maybe.withDefault (text "") <|
+                flip Maybe.map maybeComicPair <|
+                    \({ requested } as comicPair) ->
+                        if shouldHideFunc comicPair then
+                            text ""
+                        else
+                            (+) requested.number incrementByNumber
+                                |> WithNumber
+                                |> navLink name shortcutIcon
+    in
+        div [ class "navigation" ]
+            [ arrowLink isFirstComic "Previous" "←" -1
+            , navLink "Latest" "L" LatestAndRequested
+            , navLink "Random" "R" Random
+            , arrowLink isLatestComic "Next" "→" 1
+            ]
+
 
 viewImage : Comic -> Html Msg
 viewImage { imageLink, alternateText } =
@@ -308,7 +307,7 @@ viewImage { imageLink, alternateText } =
 
 
 viewMeta : Comic -> Html Msg
-viewMeta { number, month, day, year, transcript, news } =
+viewMeta { number, alternateText, month, day, year, transcript, news } =
     let
         viewMetaItem label_ value =
             if String.isEmpty value then
@@ -322,6 +321,10 @@ viewMeta { number, month, day, year, transcript, news } =
         div [ class "meta" ]
             [ ul []
                 [ li []
+                    [ label [] [ text "Title Text:" ]
+                    , span [] [ text alternateText ]
+                    ]
+                , li []
                     [ label [] [ text "Published on:" ]
                     , span [] [ text (month ++ "/" ++ day ++ "/" ++ year) ]
                     ]
@@ -350,17 +353,18 @@ viewComic model =
         RemoteData.Loading ->
             h2 [] [ viewLoadingSpinner model.spinnerPath ]
 
-        RemoteData.Success comicPair ->
+        RemoteData.Success ({ latest, requested } as comicPair) ->
             div []
-                [ viewHeading comicPair.requested
+                [ viewHeading requested
                 , viewNavigation <| Just comicPair
-                , viewImage comicPair.requested
-                , viewMeta comicPair.requested
+                , viewImage requested
+                , viewMeta requested
                 ]
 
         RemoteData.Failure error ->
             viewError (toString error)
-    
+
+
 viewError : String -> Html Msg
 viewError errorMessage =
     div [] [ h2 [] [ text errorMessage ], viewNavigation Nothing ]
@@ -381,32 +385,33 @@ view model =
         NotFoundRoute ->
             viewError "Not Found"
 
+
+
 ---- SUBSCRIPTIONS ----
 
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
     let
-        handleKeyDown code =
-            case ( code, getComicPair model ) of
+        msgForKeyCode keyCode =
+            case ( keyCode, getComicPair model ) of
                 -- Left arrow
-                ( 37, RemoteData.Success comicPair ) ->
+                ( 37, RemoteData.Success ({ requested } as comicPair) ) ->
                     if isFirstComic comicPair then
                         Noop
                     else
-                        LoadRequestedComic <| WithNumber <| comicPair.requested.number - 1
+                        LoadRequestedComic <| WithNumber <| requested.number - 1
 
                 -- Right arrow
-                ( 39, RemoteData.Success comicPair ) ->
+                ( 39, RemoteData.Success ({ requested } as comicPair) ) ->
                     if isLatestComic comicPair then
                         Noop
                     else
-                        LoadRequestedComic <| WithNumber <| comicPair.requested.number + 1
+                        LoadRequestedComic <| WithNumber <| requested.number + 1
 
-                -- H key
-                ( 72, _ ) ->
+                -- L key
+                ( 76, _ ) ->
                     LoadRequestedComic <| LatestAndRequested
-
 
                 -- R key
                 ( 82, _ ) ->
@@ -415,7 +420,8 @@ subscriptions model =
                 _ ->
                     Noop
     in
-        Keyboard.downs handleKeyDown
+        Keyboard.downs msgForKeyCode
+
 
 
 ---- PROGRAM ----
