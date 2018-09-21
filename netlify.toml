@@ -1,0 +1,11 @@
+[Settings]
+
+[build]
+  base    = ""
+  publish = "build"
+  command = "npm run-script build"
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://xkcd.com/:splat"
+  status = 200

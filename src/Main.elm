@@ -113,10 +113,10 @@ comicApiUrl : ComicQuery -> String
 comicApiUrl comicQuery =
     case comicQuery of
         WithNumber number ->
-            "https://xkcd.com/" ++ (toString number) ++ "/info.0.json"
+            "/api/" ++ (toString number) ++ "/info.0.json"
 
         _ ->
-            "https://xkcd.com/info.0.json"
+            "/api/info.0.json"
 
 
 comicUrl : Int -> String
@@ -157,7 +157,7 @@ fetchComic : ComicQuery -> Cmd Msg
 fetchComic comicQuery =
     let
         url =
-            "https://vishaltelangre.com/cors-proxy?url=" ++ (comicApiUrl comicQuery)
+            comicApiUrl comicQuery
     in
         Http.get url comicDecoder |> RemoteData.sendRequest |> Cmd.map (OnComicLoad comicQuery)
 

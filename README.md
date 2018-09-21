@@ -14,15 +14,14 @@ It is hosted at https://vishaltelangre.com/xkcd.
 ### To run locally
 
 ```
-npm install create-elm-app -g
-
+npm install
 elm-app start
 ```
 
 ### To make production build
 
 ```
-PUBLIC_URL=./ elm-app build
+npm run-script build
 ```
 
 ### License
