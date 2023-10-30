@@ -8,7 +8,7 @@ Built with ❤️ using Elm.
 ![xkcd-browser](https://user-images.githubusercontent.com/876195/34456050-5bbb577a-edb3-11e7-91c2-22aedecb7cac.gif)
 
 
-It is hosted at https://vishaltelangre.com/xkcd.
+It is hosted at https://xkcd.vishaltelangre.com.
 
 
 ### To run locally
